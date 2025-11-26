@@ -44,6 +44,10 @@ class WebPanel:
         
         self._setup_routes()
     
+    def set_executor(self, executor):
+        """设置executor引用，用于手动操作"""
+        self.executor = executor
+    
     def _setup_routes(self):
         @self.app.get("/", response_class=HTMLResponse)
         async def get_index():
@@ -52,6 +56,54 @@ class WebPanel:
         @self.app.get("/api/state")
         async def get_state():
             return self.state_data
+        
+        @self.app.post("/api/plans")
+        async def create_plan(plan: PlanCreate):
+            """创建交易计划"""
+            if not self.executor:
+                raise HTTPException(status_code=500, detail="Executor未初始化")
+            
+            result = self.executor.create_plan(
+                symbol=self.executor.positions.get(list(self.executor.positions.keys())[0]).symbol if self.executor.positions else "ETH/USDT",
+                trigger_price=plan.trigger_price,
+                direction=plan.direction,
+                amount=plan.amount,
+                leverage=plan.leverage,
+                stop_loss=plan.stop_loss,
+                take_profit=plan.take_profit
+            )
+            
+            if not result.get('success'):
+                raise HTTPException(status_code=400, detail=result.get('error', '创建失败'))
+            
+            return result
+        
+        @self.app.put("/api/plans/{plan_id}")
+        async def update_plan(plan_id: str, plan: PlanUpdate):
+            """修改交易计划"""
+            if not self.executor:
+                raise HTTPException(status_code=500, detail="Executor未初始化")
+            
+            kwargs = {k: v for k, v in plan.dict().items() if v is not None}
+            result = self.executor.modify_plan(plan_id, **kwargs)
+            
+            if not result.get('success'):
+                raise HTTPException(status_code=400, detail=result.get('error', '修改失败'))
+            
+            return result
+        
+        @self.app.delete("/api/plans/{plan_id}")
+        async def delete_plan(plan_id: str):
+            """删除交易计划"""
+            if not self.executor:
+                raise HTTPException(status_code=500, detail="Executor未初始化")
+            
+            result = self.executor.cancel_plan(plan_id)
+            
+            if not result.get('success'):
+                raise HTTPException(status_code=400, detail=result.get('error', '删除失败'))
+            
+            return result
         
         @self.app.websocket("/ws")
         async def websocket_endpoint(websocket: WebSocket):

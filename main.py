@@ -59,6 +59,7 @@ class AITrader:
         )
         
         self.web_panel = WebPanel()
+        self.web_panel.set_executor(self.executor)
         
         self.running = False
         self.price_stream_task = None
