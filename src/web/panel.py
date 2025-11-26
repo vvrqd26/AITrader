@@ -1,15 +1,33 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from typing import List, Dict
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List, Dict, Optional
 import asyncio
 import json
 from datetime import datetime
+
+class PlanCreate(BaseModel):
+    trigger_price: float
+    direction: str
+    amount: float
+    leverage: int
+    stop_loss: float
+    take_profit: float
+
+class PlanUpdate(BaseModel):
+    trigger_price: Optional[float] = None
+    amount: Optional[float] = None
+    leverage: Optional[int] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
 
 class WebPanel:
     def __init__(self):
         self.app = FastAPI(title="AI Trader Panel")
         self.active_connections: List[WebSocket] = []
+        self.executor = None
         self.state_data = {
             "account": {},
             "positions": [],
