@@ -8,7 +8,7 @@ class StatePersistence:
         self.state_file = state_file
         os.makedirs(os.path.dirname(state_file), exist_ok=True)
     
-    def save_state(self, executor, cycle_count: int) -> bool:
+    def save_state(self, executor, cycle_count: int, alert_manager=None) -> bool:
         """保存当前状态"""
         try:
             state = {
@@ -22,6 +22,10 @@ class StatePersistence:
                     "trade_history": executor.trade_history[-100:]
                 }
             }
+            
+            # 保存价格预警
+            if alert_manager:
+                state["price_alerts"] = alert_manager.to_dict()
             
             with open(self.state_file, 'w', encoding='utf-8') as f:
                 json.dump(state, f, ensure_ascii=False, indent=2, default=str)
@@ -43,7 +47,7 @@ class StatePersistence:
             print(f"加载状态失败: {e}")
             return None
     
-    def restore_executor(self, executor, state: Dict) -> int:
+    def restore_executor(self, executor, state: Dict, alert_manager=None, callback=None) -> int:
         """恢复执行器状态"""
         if not state or 'executor' not in state:
             return 0
@@ -68,10 +72,18 @@ class StatePersistence:
                 if 'timestamp' in item and isinstance(item['timestamp'], str):
                     item['timestamp'] = datetime.fromisoformat(item['timestamp'])
             
+            # 恢复价格预警
+            if alert_manager and callback and 'price_alerts' in state:
+                alert_manager.from_dict(state['price_alerts'], callback)
+            
             cycle_count = state.get('cycle_count', 0)
             
             print(f"成功恢复状态: 周期 {cycle_count}, 余额 ${executor.total_balance:.2f}, "
                   f"{len(executor.positions)} 个持仓, {len(executor.plans)} 个计划")
+            
+            if alert_manager:
+                alerts = alert_manager.get_active_alerts()
+                print(f"{len(alerts)} 个价格预警")
             
             return cycle_count
         

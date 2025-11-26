@@ -4,8 +4,9 @@ from typing import Any, Dict, List
 from datetime import datetime
 
 class MCPServer:
-    def __init__(self, executor):
+    def __init__(self, executor, alert_manager=None):
         self.executor = executor
+        self.alert_manager = alert_manager
         self.tools = self._define_tools()
     
     def _define_tools(self) -> List[Dict]:
@@ -118,6 +119,42 @@ class MCPServer:
                     "type": "object",
                     "properties": {}
                 }
+            },
+            {
+                "name": "set_price_alert",
+                "description": "设置价格预警，当价格突破指定价位时立即触发AI决策。用于捕捉突破、回调等关键时机",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "price": {"type": "number", "description": "预警价格"},
+                        "condition": {
+                            "type": "string", 
+                            "enum": ["above", "below"],
+                            "description": "触发条件：above=价格上穿时触发，below=价格下穿时触发"
+                        },
+                        "description": {"type": "string", "description": "预警说明，如'突破2950阻力位'"}
+                    },
+                    "required": ["price", "condition"]
+                }
+            },
+            {
+                "name": "cancel_price_alert",
+                "description": "取消价格预警",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "alert_id": {"type": "string", "description": "预警ID"}
+                    },
+                    "required": ["alert_id"]
+                }
+            },
+            {
+                "name": "get_price_alerts",
+                "description": "获取所有活跃的价格预警",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
         ]
     
@@ -164,6 +201,34 @@ class MCPServer:
             
             elif tool_name == "get_plans":
                 return {"success": True, "data": self.executor.get_plans()}
+            
+            elif tool_name == "set_price_alert":
+                if not self.alert_manager:
+                    return {"success": False, "error": "价格预警功能未启用"}
+                
+                # 这里的callback会在主程序中设置
+                # 暂时返回成功，实际触发在price_stream中处理
+                return {
+                    "success": True, 
+                    "message": f"价格预警已设置: {arguments.get('condition')} ${arguments.get('price')}",
+                    "alert_data": arguments
+                }
+            
+            elif tool_name == "cancel_price_alert":
+                if not self.alert_manager:
+                    return {"success": False, "error": "价格预警功能未启用"}
+                
+                success = self.alert_manager.cancel_alert(arguments['alert_id'])
+                return {
+                    "success": success,
+                    "message": "预警已取消" if success else "预警不存在"
+                }
+            
+            elif tool_name == "get_price_alerts":
+                if not self.alert_manager:
+                    return {"success": True, "data": []}
+                
+                return {"success": True, "data": self.alert_manager.get_active_alerts()}
             
             else:
                 return {"success": False, "error": f"未知工具: {tool_name}"}

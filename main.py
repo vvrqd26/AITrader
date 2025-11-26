@@ -7,7 +7,7 @@ from datetime import datetime
 
 from src.config import config
 from src.executor import SimulatedExecutor
-from src.collector import MarketDataCollector, PriceStreamManager
+from src.collector import MarketDataCollector, PriceStreamManager, PriceAlertManager
 from src.mcp import MCPServer
 from src.agent import TradingAgent
 from src.logger import Logger
@@ -35,10 +35,17 @@ class AITrader:
         
         self.persistence = StatePersistence()
         
+        self.alert_manager = PriceAlertManager()
+        
         saved_state = self.persistence.load_state()
         if saved_state:
             self.logger.info("发现保存的状态，正在恢复...")
-            self.cycle_count = self.persistence.restore_executor(self.executor, saved_state)
+            self.cycle_count = self.persistence.restore_executor(
+                self.executor, 
+                saved_state,
+                self.alert_manager,
+                self.trigger_immediate_decision
+            )
             self.logger.info(f"状态已恢复，将从周期 {self.cycle_count + 1} 继续")
         else:
             self.logger.info("未发现保存的状态，从头开始")
@@ -51,7 +58,7 @@ class AITrader:
             callback=self.on_price_update
         )
         
-        self.mcp_server = MCPServer(self.executor)
+        self.mcp_server = MCPServer(self.executor, self.alert_manager)
         
         self.agent = TradingAgent(
             api_key=self.config.deepseek_key,
@@ -59,23 +66,33 @@ class AITrader:
         )
         
         self.web_panel = WebPanel()
-        self.web_panel.set_executor(self.executor)
+        self.web_panel.set_executor(self.executor, self.alert_manager)
         
         self.running = False
         self.price_stream_task = None
+        self.immediate_decision_needed = False
         
         self.logger.info("AI Trader 初始化完成")
     
     def save_state_callback(self):
         """状态变化时自动保存"""
         try:
-            self.persistence.save_state(self.executor, self.cycle_count)
+            self.persistence.save_state(self.executor, self.cycle_count, self.alert_manager)
         except Exception as e:
             self.logger.error(f"自动保存状态失败: {e}")
+    
+    def trigger_immediate_decision(self, alert, current_price):
+        """价格预警触发，立即执行决策"""
+        self.logger.warning(f"⚡ 价格预警触发: {alert.description} @ ${current_price:.2f}")
+        self.immediate_decision_needed = True
     
     def on_price_update(self, price: float):
         """价格更新回调"""
         try:
+            # 检查价格预警
+            triggered = self.alert_manager.check_alerts(price)
+            
+            # 检查交易计划和止损止盈
             result = self.executor.update_price(price)
             
             if result['triggered_plans']:
@@ -151,10 +168,12 @@ class AITrader:
                 
                 positions = self.executor.get_positions()
                 plans = self.executor.get_plans()
+                alerts = self.alert_manager.get_active_alerts()
                 
                 self.web_panel.update_account(account_info)
                 self.web_panel.update_positions(positions)
                 self.web_panel.update_plans(plans)
+                self.web_panel.update_price_alerts(alerts)
                 
                 formatted_info = self.collector.format_data_for_agent(
                     market_data, account_info, positions, plans
@@ -193,6 +212,18 @@ class AITrader:
                                 tool_call['name'],
                                 tool_call['arguments']
                             )
+                            
+                            # 处理价格预警设置
+                            if tool_call['name'] == 'set_price_alert' and result.get('success'):
+                                alert_data = result.get('alert_data', {})
+                                alert_id = self.alert_manager.create_alert(
+                                    price=alert_data['price'],
+                                    condition=alert_data['condition'],
+                                    callback=self.trigger_immediate_decision,
+                                    description=alert_data.get('description', '')
+                                )
+                                result['alert_id'] = alert_id
+                                self.logger.info(f"价格预警已设置: {alert_data['condition']} ${alert_data['price']:.2f}")
                             
                             self.logger.info(f"工具 {tool_call['name']} 结果: {result}")
                             self.logger.log_trade(
@@ -259,8 +290,14 @@ class AITrader:
                     self.logger.debug(f"实时价格: ${last_price:.2f} (更新于 {update_age:.1f}秒前)")
                 
                 if self.cycle_count % 10 == 0:
-                    self.persistence.save_state(self.executor, self.cycle_count)
+                    self.persistence.save_state(self.executor, self.cycle_count, self.alert_manager)
                     self.logger.info(f"状态已保存 (周期 {self.cycle_count})")
+                
+                # 检查是否需要立即决策
+                if self.immediate_decision_needed:
+                    self.immediate_decision_needed = False
+                    self.logger.warning("⚡ 价格预警触发，跳过等待立即执行下次决策")
+                    continue
                 
                 await asyncio.sleep(self.config.loop_interval)
             
@@ -303,7 +340,7 @@ class AITrader:
                             pass
                     
                     self.logger.info("保存最终状态...")
-                    self.persistence.save_state(self.executor, self.cycle_count)
+                    self.persistence.save_state(self.executor, self.cycle_count, self.alert_manager)
                     
                     self.logger.info("停止Web服务器...")
                     await server.shutdown()

@@ -28,10 +28,12 @@ class WebPanel:
         self.app = FastAPI(title="AI Trader Panel")
         self.active_connections: List[WebSocket] = []
         self.executor = None
+        self.alert_manager = None
         self.state_data = {
             "account": {},
             "positions": [],
             "plans": [],
+            "price_alerts": [],
             "decisions": [],
             "system_status": {
                 "status": "stopped",
@@ -44,9 +46,10 @@ class WebPanel:
         
         self._setup_routes()
     
-    def set_executor(self, executor):
-        """设置executor引用，用于手动操作"""
+    def set_executor(self, executor, alert_manager=None):
+        """设置executor和alert_manager引用，用于手动操作"""
         self.executor = executor
+        self.alert_manager = alert_manager
     
     def _setup_routes(self):
         @self.app.get("/", response_class=HTMLResponse)
@@ -144,6 +147,10 @@ class WebPanel:
     def update_plans(self, plans: List[Dict]):
         """更新交易计划"""
         self.state_data["plans"] = plans
+    
+    def update_price_alerts(self, alerts: List[Dict]):
+        """更新价格预警"""
+        self.state_data["price_alerts"] = alerts
     
     def add_decision(self, decision: Dict):
         """添加决策记录"""
@@ -262,6 +269,98 @@ class WebPanel:
             justify-content: center;
             color: #8b949e;
         }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        .btn-primary {
+            background: #1f6feb;
+            color: white;
+        }
+        .btn-success {
+            background: #3fb950;
+            color: white;
+        }
+        .btn-danger {
+            background: #f85149;
+            color: white;
+        }
+        .btn-cancel {
+            background: #8b949e;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        .modal-content {
+            background-color: #0d1117;
+            margin: 5% auto;
+            padding: 30px;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            width: 500px;
+            max-width: 90%;
+        }
+        .modal-content h2 {
+            color: #58a6ff;
+            margin-bottom: 20px;
+        }
+        .close {
+            color: #8b949e;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #f85149;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #8b949e;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            color: #00ff41;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        .form-actions {
+            margin-top: 20px;
+            text-align: right;
+        }
+        .plan-actions {
+            margin-top: 8px;
+        }
+        .plan-actions button {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -323,13 +422,64 @@ class WebPanel:
 
             <div class="panel">
                 <h2>📝 Trading Plans</h2>
+                <div style="margin-bottom: 15px;">
+                    <button onclick="showCreatePlanModal()" class="btn btn-primary">➕ 创建计划</button>
+                </div>
                 <div id="plans">No plans</div>
             </div>
         </div>
+        
+        <div class="grid">
+            <div class="panel">
+                <h2>⚡ Price Alerts</h2>
+                <div id="price-alerts">No alerts</div>
+            </div>
 
-        <div class="panel">
-            <h2>🧠 Agent Decisions</h2>
-            <div id="decisions">No decisions yet</div>
+            <div class="panel">
+                <h2>🧠 Agent Decisions</h2>
+                <div id="decisions">No decisions yet</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 创建计划模态框 -->
+    <div id="createPlanModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>创建交易计划</h2>
+            <form id="createPlanForm" onsubmit="createPlan(event)">
+                <div class="form-group">
+                    <label>触发价格:</label>
+                    <input type="number" step="0.01" name="trigger_price" required>
+                </div>
+                <div class="form-group">
+                    <label>方向:</label>
+                    <select name="direction" required>
+                        <option value="long">做多 (LONG)</option>
+                        <option value="short">做空 (SHORT)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>金额 (USD):</label>
+                    <input type="number" step="0.01" name="amount" required>
+                </div>
+                <div class="form-group">
+                    <label>杠杆:</label>
+                    <input type="number" step="1" name="leverage" value="10" min="1" max="20" required>
+                </div>
+                <div class="form-group">
+                    <label>止损价格:</label>
+                    <input type="number" step="0.01" name="stop_loss" required>
+                </div>
+                <div class="form-group">
+                    <label>止盈价格:</label>
+                    <input type="number" step="0.01" name="take_profit" required>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-success">创建</button>
+                    <button type="button" class="btn btn-cancel" onclick="closeModal()">取消</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -395,6 +545,23 @@ class WebPanel:
                         <div><strong>${plan.plan_id}</strong> - Trigger: $${plan.trigger_price.toFixed(2)}</div>
                         <div>${plan.direction.toUpperCase()} $${plan.amount.toFixed(2)} @ ${plan.leverage}x</div>
                         <div>SL: $${plan.stop_loss.toFixed(2)} | TP: $${plan.take_profit.toFixed(2)}</div>
+                        <div class="plan-actions">
+                            <button class="btn btn-danger" onclick="deletePlan('${plan.plan_id}')">🗑️ 删除</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Price Alerts
+            const alertsDiv = document.getElementById('price-alerts');
+            if (data.price_alerts.length === 0) {
+                alertsDiv.innerHTML = '<div style="color: #8b949e;">No alerts</div>';
+            } else {
+                alertsDiv.innerHTML = data.price_alerts.map(alert => `
+                    <div class="plan">
+                        <div><strong>${alert.alert_id}</strong> - ${alert.condition.toUpperCase()} $${alert.price.toFixed(2)}</div>
+                        <div>${alert.description || '无描述'}</div>
+                        <div style="font-size: 12px; color: #8b949e;">创建时间: ${new Date(alert.create_time).toLocaleString()}</div>
                     </div>
                 `).join('');
             }
@@ -413,6 +580,82 @@ class WebPanel:
                             '<div style="color: #8b949e;">No actions</div>'}
                     </div>
                 `).join('');
+            }
+        }
+        
+        // 模态框控制
+        function showCreatePlanModal() {
+            document.getElementById('createPlanModal').style.display = 'block';
+        }
+        
+        function closeModal() {
+            document.getElementById('createPlanModal').style.display = 'none';
+            document.getElementById('createPlanForm').reset();
+        }
+        
+        window.onclick = function(event) {
+            const modal = document.getElementById('createPlanModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+        
+        // 创建计划
+        async function createPlan(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const planData = {
+                trigger_price: parseFloat(formData.get('trigger_price')),
+                direction: formData.get('direction'),
+                amount: parseFloat(formData.get('amount')),
+                leverage: parseInt(formData.get('leverage')),
+                stop_loss: parseFloat(formData.get('stop_loss')),
+                take_profit: parseFloat(formData.get('take_profit'))
+            };
+            
+            try {
+                const response = await fetch('/api/plans', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(planData)
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    alert('计划创建成功: ' + result.plan_id);
+                    closeModal();
+                    location.reload();
+                } else {
+                    alert('创建失败: ' + (result.error || result.detail || '未知错误'));
+                }
+            } catch (error) {
+                alert('请求失败: ' + error.message);
+            }
+        }
+        
+        // 删除计划
+        async function deletePlan(planId) {
+            if (!confirm('确定要删除这个计划吗？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/plans/${planId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    alert('计划已删除');
+                    location.reload();
+                } else {
+                    alert('删除失败: ' + (result.error || result.detail || '未知错误'));
+                }
+            } catch (error) {
+                alert('请求失败: ' + error.message);
             }
         }
 

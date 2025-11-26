@@ -24,6 +24,21 @@ class Config:
                 return default
         return value
     
+    def load_system_prompt(self) -> str:
+        """加载system prompt，支持从文件或配置中读取，并替换动态配置项"""
+        prompt_file = "prompts/system_prompt.md"
+        if os.path.exists(prompt_file):
+            with open(prompt_file, 'r', encoding='utf-8') as f:
+                content = f.read()
+        else:
+            content = self.get('agent.system_prompt', '')
+        
+        content = content.replace('{max_position_ratio}', str(int(self.max_position_ratio * 100)))
+        content = content.replace('{max_leverage}', str(self.max_leverage))
+        content = content.replace('{min_stop_loss_percent}', str(int(self.min_stop_loss_percent * 100)))
+        
+        return content
+    
     @property
     def deepseek_key(self) -> str:
         return self.get('api_keys.deepseek', '')
@@ -78,6 +93,6 @@ class Config:
     
     @property
     def system_prompt(self) -> str:
-        return self.get('agent.system_prompt', '')
+        return self.load_system_prompt()
 
 config = Config()
