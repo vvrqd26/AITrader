@@ -4,12 +4,15 @@ services:
   ai-trader:
     build: 
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.remote
+      args:
+        - REPO_URL=${REPO_URL:-https://github.com/vvrqd26/AITrader.git}
+        - BRANCH=${BRANCH:-main}
     container_name: ai-trader
     restart: unless-stopped
     
     ports:
-      - "8000:8000"
+      - "8003:8000"
     
     volumes:
       - ./config:/app/config

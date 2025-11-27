@@ -23,7 +23,7 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz && \
     rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
 # Clone repository and install dependencies
-ARG REPO_URL=https://github.com/your-repo/ai-trader.git
+ARG REPO_URL=https://github.com/vvrqd26/AITrader.git
 ARG BRANCH=main
 
 RUN git clone -b $BRANCH $REPO_URL . && \
