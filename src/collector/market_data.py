@@ -285,7 +285,8 @@ class MarketDataCollector:
         return market_data
     
     def format_data_for_agent(self, market_data: Dict, account_info: Dict, 
-                             positions: List[Dict], plans: List[Dict]) -> str:
+                             positions: List[Dict], plans: List[Dict],
+                             alerts: List[Dict] = None) -> str:
         formatted = f"""=== 市场数据 ===
 交易对: {market_data.get('symbol', 'N/A')}
 当前价格: ${market_data.get('current_price', 0):.2f}
@@ -375,5 +376,14 @@ class MarketDataCollector:
                 formatted += f"  止损: ${plan['stop_loss']:.2f} | 止盈: ${plan['take_profit']:.2f}\n\n"
         else:
             formatted += "=== 待触发计划 ===\n无计划\n\n"
+        
+        if alerts:
+            formatted += "=== 价格预警 ===\n"
+            for alert in alerts:
+                formatted += f"[{alert['alert_id']}] {alert['condition'].upper()} ${alert['price']:.2f}\n"
+                formatted += f"  说明: {alert.get('description', '无')}\n"
+                formatted += f"  创建时间: {alert['create_time']}\n\n"
+        else:
+            formatted += "=== 价格预警 ===\n无预警\n\n"
         
         return formatted

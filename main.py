@@ -176,7 +176,7 @@ class AITrader:
                 self.web_panel.update_price_alerts(alerts)
                 
                 formatted_info = self.collector.format_data_for_agent(
-                    market_data, account_info, positions, plans
+                    market_data, account_info, positions, plans, alerts
                 )
                 
                 self.logger.debug(f"市场信息:\n{formatted_info}")
@@ -213,7 +213,6 @@ class AITrader:
                                 tool_call['arguments']
                             )
                             
-                            # 处理价格预警设置
                             if tool_call['name'] == 'set_price_alert' and result.get('success'):
                                 alert_data = result.get('alert_data', {})
                                 alert_id = self.alert_manager.create_alert(
@@ -224,6 +223,12 @@ class AITrader:
                                 )
                                 result['alert_id'] = alert_id
                                 self.logger.info(f"价格预警已设置: {alert_data['condition']} ${alert_data['price']:.2f}")
+                                
+                                self.persistence.save_state(self.executor, self.cycle_count, self.alert_manager)
+                            
+                            if tool_call['name'] == 'cancel_price_alert' and result.get('success'):
+                                self.logger.info(f"价格预警已取消: {tool_call['arguments'].get('alert_id')}")
+                                self.persistence.save_state(self.executor, self.cycle_count, self.alert_manager)
                             
                             self.logger.info(f"工具 {tool_call['name']} 结果: {result}")
                             self.logger.log_trade(
