@@ -36,22 +36,13 @@ class DataCollector:
     def get_ohlcv(self, symbol: str, timeframe: str, limit: int = 200) -> Optional[pd.DataFrame]:
         cache_file = os.path.join(self.cache_dir, f"{symbol.replace('/', '_')}_{timeframe}.json")
         
-        if os.path.exists(cache_file):
-            cache_time = os.path.getmtime(cache_file)
-            if time.time() - cache_time < self.cache_ttl:
-                try:
-                    with open(cache_file, 'r') as f:
-                        data = json.load(f)
-                        df = pd.DataFrame(data)
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
-                        return df
-                except Exception as e:
-                    print(f"读取缓存失败: {e}")
-        
         try:
             ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            
+            if len(df) < limit * 0.8:
+                print(f"警告: {symbol} {timeframe} 只获取到 {len(df)}/{limit} 条数据")
             
             cache_data = df.to_dict('records')
             for item in cache_data:
@@ -64,6 +55,19 @@ class DataCollector:
             return df
         except Exception as e:
             print(f"获取K线数据失败 {symbol} {timeframe}: {e}")
+            
+            if os.path.exists(cache_file):
+                try:
+                    print(f"尝试使用缓存数据 {cache_file}")
+                    with open(cache_file, 'r') as f:
+                        data = json.load(f)
+                        df = pd.DataFrame(data)
+                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        print(f"从缓存加载 {len(df)} 条数据")
+                        return df
+                except Exception as cache_error:
+                    print(f"读取缓存失败: {cache_error}")
+            
             return None
 
 class IndicatorCalculator:

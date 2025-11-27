@@ -182,6 +182,7 @@ class WebPanel:
 <head>
     <title>AI Trader Panel</title>
     <meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
@@ -232,7 +233,7 @@ class WebPanel:
         }
         .positive { color: #3fb950; }
         .negative { color: #f85149; }
-        .position, .plan, .decision { 
+        .position, .plan { 
             background: #161b22; 
             padding: 12px; 
             margin: 10px 0; 
@@ -241,7 +242,28 @@ class WebPanel:
         }
         .position.long { border-left-color: #3fb950; }
         .position.short { border-left-color: #f85149; }
-        .decision { border-left-color: #58a6ff; }
+        .plan { border-left-color: #d29922; }
+        .decision { 
+            background: #161b22; 
+            padding: 12px; 
+            margin: 10px 0; 
+            border-radius: 4px;
+            border-left: 3px solid #58a6ff;
+        }
+        .markdown-content {
+            white-space: pre-wrap;
+            line-height: 1.5;
+        }
+        .markdown-content ul, .markdown-content ol {
+            padding-left: 20px;
+            margin: 10px 0;
+        }
+        .markdown-content li {
+            margin: 5px 0;
+        }
+        .markdown-content strong {
+            color: #00ff41;
+        }
         .status { 
             display: inline-block; 
             padding: 4px 12px; 
@@ -571,15 +593,18 @@ class WebPanel:
             if (data.decisions.length === 0) {
                 decisionsDiv.innerHTML = '<div style="color: #8b949e;">No decisions yet</div>';
             } else {
-                decisionsDiv.innerHTML = data.decisions.slice(0, 10).map(dec => `
-                    <div class="decision">
-                        <div><strong>${dec.timestamp}</strong></div>
-                        <div>${dec.analysis || 'No analysis'}</div>
-                        ${dec.tool_calls && dec.tool_calls.length > 0 ? 
-                            '<pre>' + JSON.stringify(dec.tool_calls, null, 2) + '</pre>' : 
-                            '<div style="color: #8b949e;">No actions</div>'}
-                    </div>
-                `).join('');
+                decisionsDiv.innerHTML = data.decisions.slice(0, 10).map(dec => {
+                    const analysisHtml = dec.analysis ? marked.parse(dec.analysis) : 'No analysis';
+                    return `
+                        <div class="decision">
+                            <div><strong>${dec.timestamp}</strong></div>
+                            <div class="markdown-content">${analysisHtml}</div>
+                            ${dec.tool_calls && dec.tool_calls.length > 0 ? 
+                                '<pre>' + JSON.stringify(dec.tool_calls, null, 2) + '</pre>' : 
+                                '<div style="color: #8b949e;">No actions</div>'}
+                        </div>
+                    `;
+                }).join('');
             }
         }
         
