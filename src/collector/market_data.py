@@ -244,14 +244,9 @@ class MarketDataCollector:
         self.calculator = IndicatorCalculator()
     
     def collect_market_data(self, symbol: str) -> Dict:
-        current_price = self.collector.get_current_price(symbol)
-        
-        if current_price is None:
-            return {"error": "无法获取当前价格"}
-        
         market_data = {
             "symbol": symbol,
-            "current_price": current_price,
+            "current_price": None,
             "timestamp": datetime.now().isoformat(),
             "timeframes": {}
         }
@@ -281,6 +276,12 @@ class MarketDataCollector:
                 "previous": prev,
                 "candles_count": len(df)
             }
+            
+            if timeframe == '1m' and market_data['current_price'] is None:
+                market_data['current_price'] = latest.get('close')
+        
+        if market_data['current_price'] is None:
+            return {"error": "无法获取当前价格"}
         
         return market_data
     
